@@ -49,6 +49,8 @@ git push
    | Animación / resaltado visual del flujo               | Registro/celda activa se resalta con color en cada fase.                       |
    | Log de micro-operaciones                             | Cada fase agrega una línea cronológica legible al log.                         |
    | Controles STEP/RUN/PAUSE/RESET/LOAD PROGRAM          | Los 5 botones (dibujos) funcionan y están correctamente asignados a sus funciones. |
+   | Modo RUN instantáneo + Run Lento (1s/fase)           | `RUN` entrega el resultado de inmediato; `Run Lento` anima cada fase para exposición, y PAUSE lo detiene. |
+   | Diagrama de bloques interactivo (Datapath.gs)        | Los cuadros del diagrama muestran los valores reales y se colorean según la fase activa en STEP/Run Lento. |
    | Documentación técnica (README.md)                    | Incluye diagrama Mermaid, tabla ISA, manual de usuario y traza de registros.   |
 
 4. Mueve cada issue por las columnas conforme avances realmente (no todo a `Done` al final).
@@ -71,9 +73,13 @@ los hagas todos pegados al final):
 7. `feat: botones de control Step/Run/Pause/Reset/Load Program`
 8. `fix: correccion de banderas CF/SF en operaciones de resta y CMP`
 9. `test: validacion de la traza del programa demostrativo (1+2+3+4+5=15)`
-10. `docs: manual de instalacion en Google Sheets / Apps Script`
-11. `docs: README con diagrama Mermaid, tabla ISA, manual de usuario y traza de registros`
-12. `chore: cierre del tablero Kanban y revision final antes de la entrega`
+10. `feat: N configurable (celda de entrada) para el programa demostrativo`
+11. `perf: modo RUN instantaneo (computo en memoria, un solo volcado a la hoja)`
+12. `feat: modo Run Lento (1s/fase) y PAUSE funcional para exposicion en vivo`
+13. `feat: diagrama de bloques interactivo conectado a los registros reales (Datapath.gs)`
+14. `docs: manual de instalacion en Google Sheets / Apps Script`
+15. `docs: README con diagrama Mermaid, tabla ISA, manual de usuario y traza de registros`
+16. `chore: cierre del tablero Kanban y revision final antes de la entrega`
 
 Cada commit debe corresponder a trabajo real hecho en ese momento (edita el módulo, pruébalo en la
 hoja, luego confirma). Mueve la tarjeta del issue relacionado a `In Progress` cuando empiezas y a

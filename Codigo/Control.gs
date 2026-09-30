@@ -206,6 +206,7 @@ function stepCycle() {
   }
 
   refreshRegisters(sheet, state);
+  refreshDatapath(sheet, state);
   saveState(state);
 }
 
@@ -295,12 +296,12 @@ function runProgram() {
 }
 
 function pauseProgram() {
-  // RUN ahora es instantaneo (ver arriba): termina antes de que un clic en
-  // PAUSE llegue a tener efecto, asi que esta funcion ya no interrumpe nada
-  // a mitad de ejecucion. Se deja solo para que el boton no falle si ya
-  // esta insertado en la hoja.
+  // RUN (instantaneo) ya termina antes de que un clic en PAUSE pueda
+  // interrumpirlo. RUN LENTO (runProgramSlow, en Datapath.gs) si revisa
+  // esta bandera entre cada fase, asi que PAUSE lo detiene de verdad.
   var sheet = getSheet();
   var state = loadState();
-  logMicroOp(sheet, state, '--- PAUSE: RUN ahora es instantaneo, no hay una ejecucion en curso que pausar ---', 'SYSTEM');
+  PropertiesService.getDocumentProperties().setProperty(PAUSE_KEY, 'true');
+  logMicroOp(sheet, state, '--- PAUSE solicitado: si RUN LENTO esta corriendo, se detendra al terminar la fase actual ---', 'SYSTEM');
   saveState(state);
 }

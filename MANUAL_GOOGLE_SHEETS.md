@@ -21,6 +21,8 @@ en la carpeta `apps_script/` como archivos `.gs`, listos para copiar al editor d
    - `Control` ← pega el contenido de `apps_script/Control.gs`
    - `Program` ← pega el contenido de `apps_script/Program.gs`
    - `Setup` ← pega el contenido de `apps_script/Setup.gs`
+   - `Datapath` ← pega el contenido de `apps_script/Datapath.gs` (diagrama de bloques interactivo
+     + modo "Run Lento"; ver paso 6)
 4. Guarda el proyecto (`Ctrl+S` o el ícono de disquete). Ponle un nombre, ej. "Simulador CPU".
 
 > No importa en qué orden estén los archivos: en Apps Script todas las funciones comparten un
@@ -61,6 +63,9 @@ de Google Sheets a los botones de formulario de Excel:
    | PAUSE          | `pauseProgram`       |
    | RESET          | `resetSimulator`     |
 
+   > `Run Lento` y `Conectar Diagrama` (ver paso 6) no necesitan botón propio: ya están en el menú
+   > **"CPU Simulador"** de la hoja, que se genera solo al abrir la hoja (función `onOpen`).
+
 5. Repite para los 5 botones, ubicándolos ordenadamente en las filas 24-25 (debajo del panel de
    controles). Puedes duplicar el primer dibujo (`Ctrl+C` / `Ctrl+V`) y solo cambiarle el texto y
    la función asignada, para que todos se vean iguales.
@@ -68,17 +73,40 @@ de Google Sheets a los botones de formulario de Excel:
 ## Paso 5 — Probar el simulador
 
 1. Haz clic en **LOAD PROGRAM**. La memoria debe llenarse (segmento azul = código, segmento
-   amarillo = datos) y el log debe mostrar "Programa 'SUMA 1..N' cargado...".
+   amarillo = datos) y el log debe mostrar "Programa 'SUMA 1..N' cargado...". Podés cambiar cuántos
+   números se suman editando la celda amarilla **`N (suma 1..N)`** (`B22`, rango 1-20) antes de
+   cargar el programa.
 2. Haz clic varias veces en **STEP** y observa cómo `PC`, `MAR`, `MDR`, `IR`, `AX`, `BX` y las
    banderas cambian en cada micro-paso, con la celda de memoria activa resaltada en verde y el
    registro activo en amarillo.
-3. Haz clic en **RESET** y luego en **RUN**: verás la ejecución animarse sola (ajusta la celda
-   "Velocidad RUN (ms)" para más o menos velocidad). Se detiene sola al llegar a `HLT`.
-   - Puedes hacer clic en **PAUSE** mientras `RUN` está corriendo: como cada botón dispara una
-     ejecución de Apps Script independiente, el clic en PAUSE sí llega y detiene el bucle en el
-     siguiente ciclo (usa una bandera compartida en `PropertiesService`).
+3. Haz clic en **RESET** y luego en **RUN** (menú o botón): el resultado aparece **de inmediato**
+   (memoria, registros y log completos de una sola vez) — `RUN` ya no anima paso a paso, es
+   intencionalmente instantáneo. Si querés verlo animarse en vivo (por ejemplo para una
+   exposición), usá **Run Lento (1s/fase)** desde el menú "CPU Simulador" en su lugar: anima cada
+   fase con 1 segundo de pausa, igual que STEP pero automático.
+   - Podés hacer clic en **PAUSE** mientras **Run Lento** está corriendo: como cada botón/menú
+     dispara una ejecución de Apps Script independiente, el clic en PAUSE sí llega y detiene el
+     bucle al terminar la fase actual (usa una bandera compartida en `PropertiesService`). `RUN`
+     (el instantáneo) ya termina antes de que un clic en PAUSE pueda alcanzarlo — es esperado.
 4. Verifica que la celda de memoria `0x81` (fila `80h`, columna `1`) termine en `0x0F` (15
-   decimal) = `1+2+3+4+5`.
+   decimal) = `1+2+3+4+5` con `N=5`, o en `N*(N+1)/2` con el `N` que hayas elegido.
+
+## Paso 6 — (Opcional) Diagrama de bloques interactivo
+
+Si además querés un diagrama visual estilo Unidad de Control / ALU / Memoria que se anime junto
+con `STEP` y `Run Lento` (ver README.md, sección "Diagrama de bloques interactivo"):
+
+1. Dibujá las cajas a mano en la hoja `CPU_SIMULATOR` (celdas combinadas + bordes), con las
+   etiquetas de texto exactas que espera `Datapath.gs` (`Cont Programa`, `Decodificador`,
+   `R. Instrucciones`, `Fetch`/`Decode`/`Execute`/`Store`, `Ciclos`, `Acumulador`, `R.Entrada`,
+   `ZF`/`CF`/`SF`, `R.Direcciones`, `R. Datos`, y una mini tabla `Dir`/`Contenido`), dejando una
+   celda vacía junto a cada una (la "caja de valor").
+2. Desde el menú **"CPU Simulador" → "Conectar Diagrama (una vez)"**, ejecutá
+   `setupDatapathDiagram()`. Esto conecta cada caja vacía al registro real correspondiente con una
+   fórmula, y guarda el mapa de celdas para poder colorearlas después.
+3. Probá con **STEP**: las cajas de la fase activa deberían iluminarse (amarillo = registro
+   activo, color de fase = indicador Fetch/Decode/Execute/Store).
+4. Si movés o rehacés alguna caja, volvé a ejecutar "Conectar Diagrama (una vez)".
 
 ## Solución de problemas comunes
 
@@ -86,16 +114,22 @@ de Google Sheets a los botones de formulario de Excel:
   de permisos del paso 3.2.
 - **Los botones no hacen nada**: revisa que el nombre de la función asignada esté escrito
   exactamente igual (sensible a mayúsculas) y sin paréntesis ni espacios.
-- **`runProgram` corre pero PAUSE no lo detiene de inmediato**: es normal que tarde hasta un ciclo
-  completo en reaccionar (el bucle revisa la bandera al inicio de cada ciclo, no a mitad de uno).
+- **No aparecen "Run Lento" ni "Conectar Diagrama" en el menú**: el menú se genera al abrir la
+  hoja (`onOpen`); si acabás de actualizar `Setup.gs`, recargá la pestaña de Google Sheets (F5)
+  para que se regenere con las opciones nuevas.
+- **`Run Lento` corre pero PAUSE no lo detiene de inmediato**: es normal que tarde hasta una fase
+  completa en reaccionar (el bucle revisa la bandera entre fase y fase, no a mitad de una).
+- **`setupDatapathDiagram` avisa que no encontró algún cuadro**: revisá que el texto de esa
+  etiqueta esté escrito igual que en la lista del paso 6.1 (no hace falta mayúsculas/tildes
+  exactas, pero sí las mismas palabras).
 - **Error "No existe la hoja CPU_SIMULATOR..."**: ejecuta `buildSheet` primero (paso 3) antes de
   usar cualquier botón.
 - **Quiero reconstruir la hoja desde cero**: vuelve a ejecutar `buildSheet` — borra la hoja
-  `CPU_SIMULATOR` anterior y la crea de nuevo (los botones/dibujos que hayas puesto sí se
-  pierden con la hoja, tendrás que reinsertarlos).
+  `CPU_SIMULATOR` anterior y la crea de nuevo (los botones/dibujos que hayas puesto, y el
+  diagrama de bloques si lo armaste, se pierden con la hoja: tendrás que reinsertarlos).
 
 ## Nota sobre la carpeta que subes a GitHub
 
-Sube la carpeta `apps_script/` (los `.gs` tal cual están) junto con `README.md` y `docs/`. Esos
-mismos `.gs` son el "código fuente" que pide la consigna para la Opción B — no hace falta exportar
-nada adicional de Google Sheets.
+Sube la carpeta `apps_script/` completa (los 6 archivos `.gs`, incluido `Datapath.gs`) junto con
+`README.md` y `docs/`. Esos mismos `.gs` son el "código fuente" que pide la consigna para la
+Opción B — no hace falta exportar nada adicional de Google Sheets.
