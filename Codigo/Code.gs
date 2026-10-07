@@ -2,6 +2,11 @@
  * SIMULADOR DE CPU 8 BITS - ARQUITECTURA VON NEUMANN
  * Archivo: Code.gs
  *
+ * TARJETAS DE GITHUB (Arquitectura-Project):
+ *   #2 Memoria y Registros: estado de la CPU (PC, MAR, MDR, IR, AX, BX, banderas), memoria de 256 bytes y su cuadricula en la hoja.
+ *   #4 Ciclo de instruccion: log de micro-operaciones y explicacion sencilla de cada fase.
+ *   #7 Bandera OF: OF forma parte del estado y del panel de banderas (celda B16).
+ *
  * Constantes globales, estado persistente del simulador (via PropertiesService,
  * ya que Apps Script no mantiene variables globales entre ejecuciones separadas
  * de cada boton), operaciones primitivas de memoria y utilidades de refresco
@@ -48,12 +53,13 @@ var PHASE_COLORS = {
 // entre cada clic de boton (cada boton dispara una ejecucion nueva).
 // ------------------------------------------------------------------
 
+// [Tarjeta #2 Memoria y Registros - estado inicial (incluye OF)]
 function getInitialState() {
   return {
     PC: 0, MAR: 0, MDR: 0,
     AX: 0, BX: 0,
     IR_Opcode: 0, IR_Op1: 0, IR_Op2: 0, IR_Text: '---',
-    ZF: false, CF: false, SF: false,
+    ZF: false, CF: false, SF: false, OF: false,
     Halted: false,
     Phase: 0,          // 0=FETCH 1=DECODE 2=EXECUTE 3=STORE
     StepCounter: 0,
@@ -63,19 +69,23 @@ function getInitialState() {
   };
 }
 
+// [Tarjeta #2 Memoria y Registros - lee el estado guardado]
 function loadState() {
   var json = PropertiesService.getDocumentProperties().getProperty(STATE_KEY);
   if (!json) return getInitialState();
   var state = JSON.parse(json);
   if (state.LastHighlightedAddr === undefined) state.LastHighlightedAddr = -1;
   if (state.NextLogRow === undefined) state.NextLogRow = 27;
+  if (state.OF === undefined) state.OF = false;   // compatibilidad con un estado guardado antes de agregar OF
   return state;
 }
 
+// [Tarjeta #2 Memoria y Registros - guarda el estado]
 function saveState(state) {
   PropertiesService.getDocumentProperties().setProperty(STATE_KEY, JSON.stringify(state));
 }
 
+// [Tarjeta #2 Memoria y Registros - hoja CPU_SIMULATOR]
 function getSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_NAME);
@@ -85,6 +95,7 @@ function getSheet() {
   return sheet;
 }
 
+// [Tarjeta #2 Memoria y Registros - formato hexadecimal de 2 digitos]
 function toHex2(n) {
   return ('0' + (n & 0xFF).toString(16).toUpperCase()).slice(-2);
 }
@@ -93,11 +104,13 @@ function toHex2(n) {
 // Operaciones primitivas de memoria (Read/Write) sobre el arreglo state.Mem
 // ------------------------------------------------------------------
 
+// [Tarjeta #2 Memoria y Registros - lectura de memoria]
 function readMem(state, address) {
   if (address < 0 || address > 255) throw new Error('Direccion fuera de rango: ' + address);
   return state.Mem[address] & 0xFF;
 }
 
+// [Tarjeta #2 Memoria y Registros - escritura de memoria]
 function writeMem(state, address, value) {
   if (address < 0 || address > 255) throw new Error('Direccion fuera de rango: ' + address);
   state.Mem[address] = value & 0xFF;
@@ -107,18 +120,21 @@ function writeMem(state, address, value) {
 // Refresco visual: cuadricula de memoria 16x16 (origen en G6) y registros
 // ------------------------------------------------------------------
 
+// [Tarjeta #2 Memoria y Registros - celda de la cuadricula para una direccion]
 function memCellRange(sheet, address) {
   var row = 6 + Math.floor(address / 16);
   var col = 7 + (address % 16);
   return sheet.getRange(row, col);
 }
 
+// [Tarjeta #2 Memoria y Registros - rango completo de la cuadricula]
 function memGridRange(sheet) {
   return sheet.getRange(6, 7, 16, 16);   // G6:V21 -> las 256 celdas de una sola vez
 }
 
 // Actualiza SOLO una celda (usado tras un STORE puntual: mucho mas barato
 // que redibujar toda la cuadricula).
+// [Tarjeta #2 Memoria y Registros - repinta una celda]
 function refreshMemoryCell(sheet, state, address) {
   if (state && state.Instant) return;   // en modo Instant, refreshAllMemory() lo hace al final
   memCellRange(sheet, address).setValue('0x' + toHex2(state.Mem[address]));
@@ -126,6 +142,7 @@ function refreshMemoryCell(sheet, state, address) {
 
 // Redibuja toda la memoria en UNA sola llamada a setValues() (antes: 256
 // llamadas individuales a setValue(), una por celda).
+// [Tarjeta #2 Memoria y Registros - repinta toda la memoria]
 function refreshAllMemory(sheet, state) {
   var values = [];
   for (var r = 0; r < 16; r++) {
@@ -138,6 +155,7 @@ function refreshAllMemory(sheet, state) {
   memGridRange(sheet).setValues(values);
 }
 
+// [Tarjeta #4 Ciclo de instruccion - nombre de la fase]
 function phaseName(state) {
   if (state.Halted) return 'HALT';
   switch (state.Phase) {
@@ -149,6 +167,7 @@ function phaseName(state) {
   }
 }
 
+// [Tarjeta #2 Memoria y Registros / #7 Bandera OF - panel de registros y banderas]
 function refreshRegisters(sheet, state) {
   // En modo Instant (RUN calculando todo el programa en memoria) no se
   // pinta nada hasta el final: evita cientos de idas y vueltas a Sheets.
@@ -163,11 +182,12 @@ function refreshRegisters(sheet, state) {
     ['0x' + toHex2(state.AX) + '  (' + state.AX + 'd)'],
     ['0x' + toHex2(state.BX) + '  (' + state.BX + 'd)']
   ]);
-  // Banderas en un solo setValues() (antes: 3 llamadas sueltas)
-  sheet.getRange('B13:B15').setValues([
+  // Banderas en un solo setValues() (antes: 3 llamadas sueltas; ahora 4 con OF)
+  sheet.getRange('B13:B16').setValues([
     [state.ZF ? 1 : 0],
     [state.CF ? 1 : 0],
-    [state.SF ? 1 : 0]
+    [state.SF ? 1 : 0],
+    [state.OF ? 1 : 0]
   ]);
 
   var fname = phaseName(state);
@@ -182,6 +202,7 @@ function refreshRegisters(sheet, state) {
 // Resaltado visual de registros/celdas activas y log de micro-operaciones
 // ------------------------------------------------------------------
 
+// [Tarjeta #6 Botones y visual - resalta un registro]
 function highlightRegister(sheet, state, a1) {
   if (state && state.Instant) return;   // modo Instant: no se pinta nada hasta el final
   sheet.getRange(a1).setBackground(COLOR_REG_ACTIVE);   // amarillo = registro activo
@@ -189,6 +210,7 @@ function highlightRegister(sheet, state, a1) {
 
 // Resalta una celda de memoria en verde y recuerda cual fue, para poder
 // limpiar SOLO esa celda despues (en vez de repintar las 256).
+// [Tarjeta #6 Botones y visual - resalta una celda de memoria]
 function highlightMemoryCell(sheet, state, address) {
   if (!(state && state.Instant)) {
     memCellRange(sheet, address).setBackground(COLOR_ACTIVE_CELL);
@@ -198,6 +220,7 @@ function highlightMemoryCell(sheet, state, address) {
 
 // Devuelve la celda de memoria resaltada a su color de segmento normal
 // (azul = codigo, amarillo = datos) SIN tocar las otras 255 celdas.
+// [Tarjeta #6 Botones y visual - quita el resalte de memoria]
 function clearMemoryHighlight(sheet, state) {
   if (state.LastHighlightedAddr !== undefined && state.LastHighlightedAddr !== null && state.LastHighlightedAddr >= 0) {
     if (!(state && state.Instant)) {
@@ -210,6 +233,7 @@ function clearMemoryHighlight(sheet, state) {
 
 // Limpia los resaltados de registros (no toca la memoria: eso lo hace
 // clearMemoryHighlight, que es mas barato que redibujar todo).
+// [Tarjeta #6 Botones y visual - quita el resalte de registros]
 function clearRegisterHighlights(sheet, state) {
   if (state && state.Instant) return;
   ['B6', 'B7', 'B8', 'B9', 'B10'].forEach(function (a1) {
@@ -221,6 +245,7 @@ function clearRegisterHighlights(sheet, state) {
 // en UNA sola llamada a setBackgrounds() (antes: 256 llamadas individuales
 // a setBackground(), una por celda). Solo se usa al cargar/reiniciar el
 // programa, NUNCA en cada ciclo de instruccion.
+// [Tarjeta #6 Botones y visual - colores de codigo (azul) y datos (amarillo)]
 function colorizeMemorySegments(sheet) {
   var colors = [];
   for (var r = 0; r < 16; r++) {
@@ -243,6 +268,7 @@ function colorizeMemorySegments(sheet) {
 //   sintiera cada vez mas lenta y se "trabara" cerca del final.
 // - faseKey (opcional) colorea la fila (ver PHASE_COLORS) para poder leer
 //   el log de un vistazo por colores, sin tener que leer cada texto.
+// [Tarjeta #4 Ciclo de instruccion - escribe una micro-operacion en el log]
 function logMicroOp(sheet, state, texto, faseKey) {
   // Modo Instant (RUN): en vez de escribir cada linea a la hoja (lo que
   // implica una ida y vuelta a Sheets por cada micro-operacion), se
@@ -265,6 +291,7 @@ function logMicroOp(sheet, state, texto, faseKey) {
 
 // Explicacion en lenguaje llano de lo que hace cada instruccion, para que
 // el log no sea solo codigos hexadecimales. Se usa en la fase EXECUTE.
+// [Tarjeta #4 Ciclo de instruccion - explicacion en lenguaje sencillo (incluye JC/JNC)]
 function friendlyExplain(op, a, b) {
   switch (op) {
     case 0x00: return 'Detiene el reloj del procesador.';
@@ -287,6 +314,8 @@ function friendlyExplain(op, a, b) {
     case 0x11: return 'Salta siempre a la direccion 0x' + toHex2(a) + '.';
     case 0x12: return 'Si ZF=1 (resultado anterior fue cero), salta a 0x' + toHex2(a) + '.';
     case 0x13: return 'Si ZF=0 (resultado anterior NO fue cero), salta a 0x' + toHex2(a) + '.';
+    case 0x14: return 'Si CF=1 (hubo acarreo/prestamo), salta a 0x' + toHex2(a) + '.';
+    case 0x15: return 'Si CF=0 (NO hubo acarreo/prestamo), salta a 0x' + toHex2(a) + '.';
     default: return '';
   }
 }

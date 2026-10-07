@@ -20,9 +20,21 @@ en la carpeta `apps_script/` como archivos `.gs`, listos para copiar al editor d
    - `ALU` ← pega el contenido de `apps_script/ALU.gs`
    - `Control` ← pega el contenido de `apps_script/Control.gs`
    - `Program` ← pega el contenido de `apps_script/Program.gs`
+   - `Program2` ← pega el contenido de `apps_script/Program2.gs` (5 programas de demostración
+     adicionales: Multiplicación, C=A+B, Mayor de dos números, Cuenta regresiva, Fibonacci)
+   - `Assembler` ← pega el contenido de `apps_script/Assembler.gs` (ensamblador de 2 pasadas)
+   - `Inspector` ← pega el contenido de `apps_script/Inspector.gs` (edición en vivo de memoria +
+     inspector de celdas)
+   - `Tests` ← pega el contenido de `apps_script/Tests.gs` (suite de pruebas automatizadas)
+   - `Teoria` ← pega el contenido de `apps_script/Teoria.gs` (hoja de equivalencias de nombres)
    - `Setup` ← pega el contenido de `apps_script/Setup.gs`
    - `Datapath` ← pega el contenido de `apps_script/Datapath.gs` (diagrama de bloques interactivo
      + modo "Run Lento"; ver paso 6)
+
+> **Importante:** solo puede existir **una** función `onEdit` en todo el proyecto de Apps Script
+> (la de `Inspector.gs`, que habilita la edición en vivo de memoria). Si en algún momento agregás
+> otro archivo con su propio `onEdit`, Apps Script va a usar solo uno de los dos (el comportamiento
+> no está garantizado) — fusioná la lógica en una sola función si eso llega a pasar.
 4. Guarda el proyecto (`Ctrl+S` o el ícono de disquete). Ponle un nombre, ej. "Simulador CPU".
 
 > No importa en qué orden estén los archivos: en Apps Script todas las funciones comparten un
@@ -91,6 +103,23 @@ de Google Sheets a los botones de formulario de Excel:
 4. Verifica que la celda de memoria `0x81` (fila `80h`, columna `1`) termine en `0x0F` (15
    decimal) = `1+2+3+4+5` con `N=5`, o en `N*(N+1)/2` con el `N` que hayas elegido.
 
+## Paso 5.5 — Si ya tenías el simulador armado (hoja ya existente)
+
+Si ya tenías `CPU_SIMULATOR` construida de antes (con `buildSheet` ya corrido una vez) y solo
+pegaste los archivos nuevos (`Program2`, `Assembler`, `Inspector`, `Tests`, `Teoria`), **no**
+vuelvas a correr `buildSheet` — borra toda la hoja y perdés los botones/dibujos que ya habías
+insertado. En su lugar:
+
+1. Recargá la pestaña de Google Sheets (F5) para que el menú **"CPU Simulador"** se regenere con
+   las opciones nuevas.
+2. Desde el menú, ejecutá **"Actualizar hoja existente (OF, entradas A/B)"**
+   (`applyUiUpgrade()`): agrega la fila de la bandera `OF`, las celdas `Valor A`/`Valor B` (para
+   los programas de 2 operandos) y la celda de código fuente del ensamblador, sin tocar nada de lo
+   que ya tenías.
+3. Probá **"Correr pruebas automatizadas"** del menú: debería confirmar `38/38 OK`. Si algo falla,
+   revisá que copiaste los 10 archivos completos (no se cortó ningún archivo al pegar).
+4. Opcional: **"Construir hoja 'Teoria' (una vez)"** para la hoja de equivalencias de nombres.
+
 ## Paso 6 — (Opcional) Diagrama de bloques interactivo
 
 Si además querés un diagrama visual estilo Unidad de Control / ALU / Memoria que se anime junto
@@ -130,6 +159,6 @@ con `STEP` y `Run Lento` (ver README.md, sección "Diagrama de bloques interacti
 
 ## Nota sobre la carpeta que subes a GitHub
 
-Sube la carpeta `apps_script/` completa (los 6 archivos `.gs`, incluido `Datapath.gs`) junto con
-`README.md` y `docs/`. Esos mismos `.gs` son el "código fuente" que pide la consigna para la
-Opción B — no hace falta exportar nada adicional de Google Sheets.
+Sube la carpeta `apps_script/` completa (los 11 archivos `.gs`) junto con `README.md` y `docs/`.
+Esos mismos `.gs` son el "código fuente" que pide la consigna para la Opción B — no hace falta
+exportar nada adicional de Google Sheets.

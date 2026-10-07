@@ -2,6 +2,12 @@
  * SIMULADOR DE CPU 8 BITS
  * Archivo: Setup.gs
  *
+ * TARJETAS DE GITHUB (Arquitectura-Project):
+ *   #6 Botones y visual: construccion de la hoja CPU_SIMULATOR, menu y reinicio.
+ *   #7 Bandera OF: fila OF en el panel de banderas.
+ *   #9 Programas de demostracion: submenu "Cargar programa" y celdas Valor A / Valor B.
+ *   #10, #11, #12, #14: entradas de menu del ensamblador, inspector, pruebas y hoja Teoria.
+ *
  * Construye desde cero la hoja "CPU_SIMULATOR": panel de registros,
  * panel de banderas, cuadricula de memoria 16x16, panel de
  * configuracion y area de log. Se ejecuta UNA sola vez desde el editor
@@ -12,22 +18,37 @@
  * docs/MANUAL_GOOGLE_SHEETS.md paso 3.
  */
 
+// [Tarjeta #6 Botones y visual - menu CPU Simulador]
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('CPU Simulador')
     .addItem('1) Construir hoja (Setup)', 'buildSheet')
+    .addItem('Actualizar hoja existente (OF, entradas A/B)', 'applyUiUpgrade')
     .addSeparator()
-    .addItem('Load Program', 'loadDemoProgram')
+    .addSubMenu(SpreadsheetApp.getUi().createMenu('Cargar programa')
+      .addItem('1. Suma de 1 a N', 'loadDemoProgram')
+      .addItem('2. Multiplicacion (A x B)', 'loadProgramMultiplicacion')
+      .addItem('3. C = A + B', 'loadProgramSumaAB')
+      .addItem('4. Mayor de dos numeros', 'loadProgramMayorDeDos')
+      .addItem('5. Cuenta regresiva desde N', 'loadProgramCuentaRegresiva')
+      .addItem('6. Fibonacci hasta desbordar (demo de OF/CF)', 'loadProgramFibonacci'))
+    .addItem('Ensamblar y cargar (hoja ENSAMBLADOR)', 'assembleAndLoadFromSheet')
+    .addSeparator()
     .addItem('Step', 'stepCycle')
     .addItem('Run', 'runProgram')
     .addItem('Run Lento (1s/fase)', 'runProgramSlow')
     .addItem('Pause', 'pauseProgram')
     .addItem('Reset', 'resetSimulator')
     .addSeparator()
+    .addItem('Inspeccionar celda de memoria...', 'inspectMemoryCellPrompt')
+    .addSeparator()
     .addItem('Conectar Diagrama (una vez)', 'setupDatapathDiagram')
+    .addItem('Construir hoja "Teoria" (una vez)', 'buildTeoriaSheet')
+    .addItem('Correr pruebas automatizadas', 'runAllTests')
     .addToUi();
 }
 
+// [Tarjeta #6 Botones y visual - construye la hoja desde cero (borra la anterior)]
 function buildSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var existing = ss.getSheetByName(SHEET_NAME);
@@ -55,6 +76,7 @@ function buildSheet() {
   sheet.getRange('A13').setValue('ZF:');
   sheet.getRange('A14').setValue('CF:');
   sheet.getRange('A15').setValue('SF:');
+  sheet.getRange('A16').setValue('OF:');
 
   sheet.getRange('A17').setValue('FASE ACTUAL:');
   sheet.getRange('A18').setValue('CICLOS EJECUTADOS:');
@@ -67,6 +89,15 @@ function buildSheet() {
   sheet.getRange('B22').setValue(5).setBackground('#fff2cc');   // celda de entrada: fondo distinto para que se note que es editable
   sheet.getRange('A23').setValue('(Botones en fila 24 en adelante: Insertar > Dibujo. Ver docs/MANUAL_GOOGLE_SHEETS.md)')
     .setFontStyle('italic').setFontSize(8);
+
+  // Entradas A/B para los programas de 2 operandos (Multiplicacion, C=A+B,
+  // Mayor de dos numeros) agregadas por Program2.gs. Se ponen en columna D
+  // para no desplazar nada del panel original de la izquierda.
+  sheet.getRange('D20').setValue('ENTRADAS').setFontWeight('bold');
+  sheet.getRange('D21').setValue('Valor A:');
+  sheet.getRange('E21').setValue(12).setBackground('#fff2cc');
+  sheet.getRange('D22').setValue('Valor B:');
+  sheet.getRange('E22').setValue(9).setBackground('#fff2cc');
 
   // ---------------- Cuadricula de Memoria 16x16 (origen visual en G6) ----------------
   sheet.getRange('G4').setValue('MEMORIA PRINCIPAL (00h - FFh)').setFontWeight('bold');
@@ -123,6 +154,7 @@ function buildSheet() {
 //   3) esta leyenda, fija junto al titulo del log, como referencia
 // Se llama desde buildSheet() (hoja nueva) y desde applyUiUpgrade() (hoja
 // ya existente, para no tener que reconstruir todo desde cero).
+// [Tarjeta #6 Botones y visual - leyenda de colores de las fases]
 function addPhaseLegend(sheet) {
   var legend = [
     ['FETCH', PHASE_COLORS.FETCH],
@@ -146,6 +178,7 @@ function addPhaseLegend(sheet) {
 // residuales) a una hoja "CPU_SIMULATOR" YA EXISTENTE, sin tener que borrar
 // y reconstruir todo con buildSheet(). Se ejecuta una sola vez, a mano,
 // desde el editor de Apps Script.
+// [Tarjeta #7 OF / #9 - actualiza una hoja existente sin borrar botones]
 function applyUiUpgrade() {
   var sheet = getSheet();
   addPhaseLegend(sheet);
@@ -162,15 +195,42 @@ function applyUiUpgrade() {
     sheet.getRange('B22').setValue(5).setBackground('#fff2cc');
   }
 
+  // --- Upgrade agregado junto con la bandera OF / los 5 programas nuevos ---
+  // Fila OF en el panel de FLAGS (si la hoja es de antes de este cambio,
+  // A16 esta vacia; si ya se corrio esta funcion una vez, no se toca).
+  if (sheet.getRange('A16').getValue() === '') {
+    sheet.getRange('A16').setValue('OF:');
+  }
+  // Entradas A/B para los programas de 2 operandos (Multiplicacion, C=A+B,
+  // Mayor de dos numeros).
+  if (sheet.getRange('D20').getValue() === '') {
+    sheet.getRange('D20').setValue('ENTRADAS').setFontWeight('bold');
+    sheet.getRange('D21').setValue('Valor A:');
+    sheet.getRange('E21').setValue(12).setBackground('#fff2cc');
+    sheet.getRange('D22').setValue('Valor B:');
+    sheet.getRange('E22').setValue(9).setBackground('#fff2cc');
+  }
+  // Hoja propia para el codigo fuente del ensamblador (ver Assembler.gs).
+  // Va aparte porque la columna A de CPU_SIMULATOR es el log y lo pisaria.
+  var ssUp = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ssUp.getSheetByName(ASM_SHEET_NAME)) {
+    createAssemblerSheet_(ssUp);
+    ssUp.setActiveSheet(sheet);
+  }
+
   // getUi().alert() solo funciona cuando se dispara desde un menu/boton de
   // la hoja, no cuando se ejecuta con "Run" desde el editor de Apps Script;
   // se envuelve en try/catch para que no aparezca como error en ese caso.
   try {
-    SpreadsheetApp.getUi().alert('Interfaz actualizada: leyenda de colores + celda de entrada "N".');
+    SpreadsheetApp.getUi().alert(
+      'Interfaz actualizada: leyenda de colores, bandera OF, entradas A/B y hoja ENSAMBLADOR para el codigo fuente.\n\n' +
+      'Revisa el menu "CPU Simulador" para ver los programas nuevos, el ensamblador, el inspector de memoria y las pruebas automatizadas.'
+    );
   } catch (e) { /* ejecutado desde el editor: no hay UI que mostrar una alerta */ }
 }
 
 // Reinicia completamente el simulador y vuelve a cargar el programa demostrativo
+// [Tarjeta #6 Botones y visual - boton RESET]
 function resetSimulator() {
   var sheet = getSheet();
 

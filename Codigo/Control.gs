@@ -2,6 +2,11 @@
  * SIMULADOR DE CPU 8 BITS
  * Archivo: Control.gs
  *
+ * TARJETAS DE GITHUB (Arquitectura-Project):
+ *   #4 Ciclo de instruccion: FETCH, DECODE, EXECUTE y STORE, con STEP y RUN.
+ *   #8 Saltos JC/JNC: opcodes 0x14 y 0x15 agregados al final de la tabla.
+ *   #7 Bandera OF: OF forma parte de las banderas que actualiza EXECUTE.
+ *
  * Unidad de Control: tabla de opcodes, decodificador, y las 4 fases del
  * ciclo de instruccion (Fetch, Decode, Execute, Store), mas los
  * orquestadores de modo Paso a Paso (stepCycle) y Continuo (runProgram).
@@ -28,18 +33,28 @@
  *   0x11 JMP  dir           (2 bytes: op, addr)
  *   0x12 JZ   dir           (2 bytes)
  *   0x13 JNZ  dir           (2 bytes)
+ *   0x14 JC   dir           (2 bytes)  -- agregado junto con la bandera OF
+ *   0x15 JNC  dir           (2 bytes)  -- agregado junto con la bandera OF
+ * ---------------------------------------------------------------------
+ * NOTA: 0x14/0x15 se agregaron al FINAL de la tabla (sin reordenar ni
+ * reciclar numeros ya usados) para no romper ningun programa o bytecode
+ * ya escrito. Una recodificacion completa de la ISA con direccionamiento
+ * sistematico (nibble alto = operacion, nibble bajo = modo), queda fuera de este cambio: ver
+ * docs/PASOS-PENDIENTES.md para el detalle de por que no se hizo aqui.
  * ---------------------------------------------------------------------
  */
 
+// [Tarjeta #4 Ciclo de instruccion - largo de cada instruccion (JC/JNC = 2 bytes)]
 function instrLength(opcode) {
   switch (opcode) {
-    case 0x00: return 1;                              // HLT
-    case 0x09: case 0x0A: case 0x10: return 2;         // INC, DEC, NOT
-    case 0x11: case 0x12: case 0x13: return 2;         // JMP, JZ, JNZ
-    default: return 3;                                  // resto
+    case 0x00: return 1;                                         // HLT
+    case 0x09: case 0x0A: case 0x10: return 2;                    // INC, DEC, NOT
+    case 0x11: case 0x12: case 0x13: case 0x14: case 0x15: return 2; // JMP, JZ, JNZ, JC, JNC
+    default: return 3;                                            // resto
   }
 }
 
+// [Tarjeta #4 Ciclo de instruccion - nombre de registro]
 function regName(code) {
   switch (code) {
     case 0: return 'AX';
@@ -48,6 +63,7 @@ function regName(code) {
   }
 }
 
+// [Tarjeta #2 Memoria y Registros - lee AX/BX]
 function getReg(state, code) {
   switch (code) {
     case 0: return state.AX;
@@ -56,12 +72,14 @@ function getReg(state, code) {
   }
 }
 
+// [Tarjeta #2 Memoria y Registros - escribe AX/BX]
 function setReg(state, code, value) {
   value = value & 0xFF;
   if (code === 0) state.AX = value;
   else if (code === 1) state.BX = value;
 }
 
+// [Tarjeta #4 Ciclo de instruccion - mnemonico de cada opcode (incluye JC/JNC)]
 function mnemonic(op, a, b) {
   switch (op) {
     case 0x00: return 'HLT';
@@ -84,11 +102,14 @@ function mnemonic(op, a, b) {
     case 0x11: return 'JMP 0x' + toHex2(a);
     case 0x12: return 'JZ 0x' + toHex2(a);
     case 0x13: return 'JNZ 0x' + toHex2(a);
+    case 0x14: return 'JC 0x' + toHex2(a);
+    case 0x15: return 'JNC 0x' + toHex2(a);
     default: return '??? (0x' + toHex2(op) + ')';
   }
 }
 
 // ================= FASE 1: FETCH =================
+// [Tarjeta #4 Ciclo de instruccion - fase FETCH]
 function fetchPhase(sheet, state) {
   // Limpia el resaltado que dejo la fase STORE del ciclo anterior (una sola
   // celda de memoria + los registros), en vez de redibujar las 256 celdas.
@@ -114,6 +135,7 @@ function fetchPhase(sheet, state) {
 }
 
 // ================= FASE 2: DECODE =================
+// [Tarjeta #4 Ciclo de instruccion - fase DECODE]
 function decodePhase(sheet, state) {
   logMicroOp(sheet, state, '[Paso ' + state.StepCounter + '] DECODE: Opcode=0x' + toHex2(state.IR_Opcode) +
     '  ->  ' + state.IR_Text, 'DECODE');
@@ -121,8 +143,9 @@ function decodePhase(sheet, state) {
 }
 
 // ================= FASE 3: EXECUTE =================
+// [Tarjeta #4 Ciclo de instruccion / #8 JC-JNC / #7 OF - fase EXECUTE]
 function executePhase(sheet, state) {
-  var flags = { ZF: state.ZF, CF: state.CF, SF: state.SF };
+  var flags = { ZF: state.ZF, CF: state.CF, SF: state.SF, OF: state.OF };
   var jumpTaken = false;
 
   switch (state.IR_Opcode) {
@@ -136,6 +159,8 @@ function executePhase(sheet, state) {
       state.MAR = state.IR_Op2;
       state.MDR = readMem(state, state.MAR);
       setReg(state, state.IR_Op1, state.MDR);
+      // Primitiva de memoria explicita (se muestra como linea de log propia):
+      logMicroOp(sheet, state, '           Primitiva: Read(0x' + toHex2(state.MAR) + ') = 0x' + toHex2(state.MDR), 'EXECUTE');
       break;
     case 0x04: break; // STORE [dir], reg -> se resuelve en fase STORE
     case 0x05: setReg(state, state.IR_Op1, aluAdd(getReg(state, state.IR_Op1), state.IR_Op2, flags)); break;
@@ -153,23 +178,26 @@ function executePhase(sheet, state) {
     case 0x11: state.PC = state.IR_Op1; jumpTaken = true; break;
     case 0x12: if (flags.ZF) { state.PC = state.IR_Op1; jumpTaken = true; } break;
     case 0x13: if (!flags.ZF) { state.PC = state.IR_Op1; jumpTaken = true; } break;
+    case 0x14: if (flags.CF) { state.PC = state.IR_Op1; jumpTaken = true; } break;   // JC
+    case 0x15: if (!flags.CF) { state.PC = state.IR_Op1; jumpTaken = true; } break;  // JNC
     default:
       SpreadsheetApp.getUi().alert('Opcode desconocido: 0x' + toHex2(state.IR_Opcode));
       state.Halted = true;
   }
 
-  state.ZF = flags.ZF; state.CF = flags.CF; state.SF = flags.SF;
+  state.ZF = flags.ZF; state.CF = flags.CF; state.SF = flags.SF; state.OF = flags.OF;
 
   var explain = friendlyExplain(state.IR_Opcode, state.IR_Op1, state.IR_Op2);
   logMicroOp(sheet, state, '[Paso ' + state.StepCounter + '] EXECUTE: ' + state.IR_Text +
     (jumpTaken ? '  -> salto tomado a 0x' + toHex2(state.PC) : '') +
-    '   |  ZF=' + (state.ZF ? 1 : 0) + ' CF=' + (state.CF ? 1 : 0) + ' SF=' + (state.SF ? 1 : 0) +
+    '   |  ZF=' + (state.ZF ? 1 : 0) + ' CF=' + (state.CF ? 1 : 0) + ' SF=' + (state.SF ? 1 : 0) + ' OF=' + (state.OF ? 1 : 0) +
     (explain ? '   // ' + explain : ''), 'EXECUTE');
 
   state.Phase = 3;
 }
 
 // ================= FASE 4: STORE / WRITE-BACK =================
+// [Tarjeta #4 Ciclo de instruccion - fase STORE]
 function storeBackPhase(sheet, state) {
   if (state.IR_Opcode === 0x04) {           // STORE [dir], reg
     state.MAR = state.IR_Op1;
@@ -180,6 +208,7 @@ function storeBackPhase(sheet, state) {
     highlightMemoryCell(sheet, state, state.MAR);   // y resalta el destino; queda visible hasta el proximo FETCH
     logMicroOp(sheet, state, '[Paso ' + state.StepCounter + '] STORE: RAM[0x' + toHex2(state.MAR) +
       '] <- MDR=0x' + toHex2(state.MDR), 'STORE');
+    logMicroOp(sheet, state, '           Primitiva: Write(0x' + toHex2(state.MAR) + ', 0x' + toHex2(state.MDR) + ')', 'STORE');
   } else {
     logMicroOp(sheet, state, '[Paso ' + state.StepCounter + '] STORE: (esta instruccion no escribe en RAM)', 'STORE');
   }
@@ -189,6 +218,7 @@ function storeBackPhase(sheet, state) {
 }
 
 // ---------- Orquestador de UN micro-paso (boton STEP) ----------
+// [Tarjeta #6 Botones y visual - boton STEP]
 function stepCycle() {
   var sheet = getSheet();
   var state = loadState();
@@ -210,6 +240,7 @@ function stepCycle() {
   saveState(state);
 }
 
+// [Tarjeta #6 Botones y visual - pausa entre fases]
 function getDelayMs(sheet) {
   var v = Number(sheet.getRange('B21').getValue());
   return (v > 0) ? v : 400;
@@ -233,6 +264,7 @@ function getDelayMs(sheet) {
 //
 // Para ver el ciclo Fetch/Decode/Execute/Store avanzar EN VIVO, fase por
 // fase, sigue estando el boton STEP (stepCycle), que no cambia.
+// [Tarjeta #6 Botones y visual - boton RUN (instantaneo)]
 function runProgram() {
   var sheet = getSheet();
 
@@ -295,6 +327,7 @@ function runProgram() {
   saveState(state);
 }
 
+// [Tarjeta #6 Botones y visual - boton PAUSE]
 function pauseProgram() {
   // RUN (instantaneo) ya termina antes de que un clic en PAUSE pueda
   // interrumpirlo. RUN LENTO (runProgramSlow, en Datapath.gs) si revisa

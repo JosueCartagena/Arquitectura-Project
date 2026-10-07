@@ -2,6 +2,10 @@
  * SIMULADOR DE CPU 8 BITS
  * Archivo: Datapath.gs
  *
+ * TARJETAS DE GITHUB (Arquitectura-Project):
+ *   #6 Botones y visual: diagrama de bloques interactivo y Run Lento.
+ *   #7 Bandera OF: caja OF en el diagrama.
+ *
  * Diagrama de bloques (Unidad de Control / ALU / Memoria) que el usuario
  * dibujo a mano en la hoja CPU_SIMULATOR (cajas y bordes de celda), a la
  * derecha del log. Este archivo NO dibuja cajas ni flechas -- eso ya esta
@@ -27,6 +31,7 @@ var DATAPATH_CELLS_KEY = 'DATAPATH_CELLS';
 var DATAPATH_MEM_START = 0x80;
 var DATAPATH_MEM_ROWS = 8;
 
+// [Tarjeta #6 Botones y visual - normaliza etiquetas del diagrama]
 function dpNorm_(s) {
   return String(s == null ? '' : s)
     .toLowerCase()
@@ -52,6 +57,7 @@ var DATAPATH_LABELS_ = {
   'zf':             { key: 'ZF',      dir: 'below' },
   'cf':             { key: 'CF',      dir: 'below' },
   'sf':             { key: 'SF',      dir: 'below' },
+  'of':             { key: 'OF',      dir: 'below' },
   'rdirecciones':   { key: 'MAR',     dir: 'below' },
   'rdatos':         { key: 'MDR',     dir: 'below' },
   'dir':            { key: 'MEMHDR_DIR',  dir: 'here' },
@@ -62,6 +68,7 @@ var DATAPATH_LABELS_ = {
 // formula que lo conecta al registro real correspondiente. Guarda el mapa
 // de direcciones en las Propiedades del Documento para que refreshDatapath()
 // no tenga que volver a buscar en cada STEP.
+// [Tarjeta #6 Botones y visual - conecta el diagrama con los registros]
 function setupDatapathDiagram() {
   var sheet = getSheet();
 
@@ -90,7 +97,7 @@ function setupDatapathDiagram() {
   }
 
   var required = ['PC', 'DECOD', 'IR', 'FETCH', 'DECODE', 'EXECUTE', 'STORE',
-    'CICLOS', 'AX', 'BX', 'ZF', 'CF', 'SF', 'MAR', 'MDR'];
+    'CICLOS', 'AX', 'BX', 'ZF', 'CF', 'SF', 'OF', 'MAR', 'MDR'];
   var missing = required.filter(function (k) { return !found[k]; });
 
   function setF(key, formula) {
@@ -107,6 +114,7 @@ function setupDatapathDiagram() {
   setF('ZF', '=$B$13');
   setF('CF', '=$B$14');
   setF('SF', '=$B$15');
+  setF('OF', '=$B$16');
   setF('CICLOS', '=$B$18');
   setF('FETCH', '=IF($B$17="FETCH","O","")');
   setF('DECODE', '=IF($B$17="DECODE","O","")');
@@ -149,6 +157,7 @@ function setupDatapathDiagram() {
 // mismo mapa de colores que ya usa el log y la celda "FASE ACTUAL". Se
 // salta por completo en modo Instant (RUN), igual que el resto de
 // funciones de pintado: solo tiene sentido verlo con STEP o RUN LENTO.
+// [Tarjeta #6 Botones y visual - ilumina las cajas de la fase activa]
 function refreshDatapath(sheet, state) {
   if (state && state.Instant) return;
 
@@ -161,13 +170,13 @@ function refreshDatapath(sheet, state) {
   var activeByPhase = {
     FETCH: ['PC', 'MAR', 'MDR', 'IR'],
     DECODE: ['IR', 'DECOD'],
-    EXECUTE: ['AX', 'BX', 'ZF', 'CF', 'SF'],
+    EXECUTE: ['AX', 'BX', 'ZF', 'CF', 'SF', 'OF'],
     STORE: (state.IR_Opcode === 0x04) ? ['MAR', 'MDR'] : [],
     HALT: []
   };
   var active = activeByPhase[fname] || [];
 
-  var allKeys = ['PC', 'DECOD', 'IR', 'MAR', 'MDR', 'AX', 'BX', 'ZF', 'CF', 'SF'];
+  var allKeys = ['PC', 'DECOD', 'IR', 'MAR', 'MDR', 'AX', 'BX', 'ZF', 'CF', 'SF', 'OF'];
   allKeys.forEach(function (key) {
     if (!cells[key]) return;
     var isActive = active.indexOf(key) >= 0;
@@ -187,6 +196,7 @@ function refreshDatapath(sheet, state) {
 // una exposicion. Se puede detener a mitad de camino con PAUSE
 // (pauseProgram), que escribe una bandera que este bucle revisa entre fase
 // y fase.
+// [Tarjeta #6 Botones y visual - Run Lento (1 s por fase)]
 function runProgramSlow() {
   var sheet = getSheet();
   var state = loadState();
